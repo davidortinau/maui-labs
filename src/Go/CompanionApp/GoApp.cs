@@ -2,9 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Threading.Tasks;
 using Comet;
 using Comet.Styles;
 using Microsoft.Maui.Hosting;
+#if DEBUG
+using Microsoft.Maui.DevFlow.Agent;
+#endif
 using ZXing.Net.Maui.Controls;
 
 namespace Microsoft.Maui.Go.CompanionApp;
@@ -27,9 +31,26 @@ public class GoApp : CometApp
 		// be set BEFORE the runtime initializes the update pipeline.
 		Environment.SetEnvironmentVariable("DOTNET_MODIFIABLE_ASSEMBLIES", "Debug");
 
+		// Global exception handlers — log but don't crash for user code errors
+		AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+		{
+			var ex = e.ExceptionObject as Exception;
+			Console.WriteLine($"[GoApp] Unhandled exception: {ex?.GetBaseException()?.Message ?? ex?.Message ?? "unknown"}");
+		};
+
+		TaskScheduler.UnobservedTaskException += (_, e) =>
+		{
+			Console.WriteLine($"[GoApp] Unobserved task: {e.Exception.GetBaseException().Message}");
+			e.SetObserved();
+		};
+
 		var builder = MauiApp.CreateBuilder();
 		builder.UseCometApp<GoApp>();
 		builder.UseBarcodeReader();
+
+#if DEBUG
+		builder.AddMauiDevFlowAgent();
+#endif
 
 		builder.ConfigureFonts(fonts =>
 		{

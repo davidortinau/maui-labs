@@ -41,7 +41,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Comet\src\Comet\Comet.csproj" />
+    <PackageReference Include="Comet" />
+    <PackageReference Include="Microsoft.Maui.DevFlow.Agent" Condition="'$(Configuration)' == 'Debug'" />
     <ProjectReference Include="..\Shared\Microsoft.Maui.Go.Shared.csproj" />
   </ItemGroup>
 

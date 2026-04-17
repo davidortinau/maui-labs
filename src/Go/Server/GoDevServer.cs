@@ -21,10 +21,12 @@ public static class GoDevServer
 	static DeltaCompiler? _compiler;
 	static int _sequence;
 	static string? _projectDir;
+	static string? _singleFilePath;
 
 	public static async Task<int> RunAsync(string projectDir, int port, bool showQr, CancellationToken ct)
 	{
 		_projectDir = Path.GetFullPath(projectDir);
+		_singleFilePath = null;
 
 		// Discover project
 		var csproj = Directory.GetFiles(_projectDir, "*.csproj").FirstOrDefault();
@@ -35,20 +37,49 @@ public static class GoDevServer
 		}
 
 		var projectName = Path.GetFileNameWithoutExtension(csproj);
+
+		_compiler = new DeltaCompiler(_projectDir, projectName);
+		return await RunCoreAsync(projectName, _projectDir, port, showQr, ct);
+	}
+
+	/// <summary>
+	/// Runs in single-file mode — watches and compiles a single .cs file.
+	/// </summary>
+	public static async Task<int> RunSingleFileAsync(string csFilePath, int port, bool showQr, CancellationToken ct)
+	{
+		var fullPath = Path.GetFullPath(csFilePath);
+		if (!File.Exists(fullPath))
+		{
+			Console.Error.WriteLine($"File not found: {fullPath}");
+			return 1;
+		}
+
+		_singleFilePath = fullPath;
+		_projectDir = Path.GetDirectoryName(fullPath)!;
+
+		var projectName = Path.GetFileNameWithoutExtension(fullPath);
+
+		_compiler = DeltaCompiler.ForSingleFile(fullPath);
+		return await RunCoreAsync(projectName, fullPath, port, showQr, ct);
+	}
+
+	static async Task<int> RunCoreAsync(string projectName, string displayPath, int port, bool showQr, CancellationToken ct)
+	{
+		var mode = _singleFilePath is not null ? "single-file" : "project";
 		Console.WriteLine();
 		Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
 		Console.WriteLine("║           Comet Go Dev Server                            ║");
 		Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
 		Console.WriteLine();
+		Console.WriteLine($"  Mode:     {mode}");
 		Console.WriteLine($"  Project:  {projectName}");
-		Console.WriteLine($"  Path:     {_projectDir}");
+		Console.WriteLine($"  Path:     {displayPath}");
 		Console.WriteLine($"  Port:     {port}");
 
 		// Initialize the incremental compiler
 		Console.WriteLine();
 		Console.Write("  Compiling initial assembly...");
-		_compiler = new DeltaCompiler(_projectDir, projectName);
-		var initResult = _compiler.CompileInitial();
+		var initResult = _compiler!.CompileInitial();
 
 		if (!initResult.Success)
 		{
@@ -96,7 +127,9 @@ public static class GoDevServer
 		var acceptTask = AcceptClientsAsync(httpListener, projectName, ct);
 
 		// Start file watcher
-		var watcherTask = WatchFilesAsync(ct);
+		var watcherTask = _singleFilePath is not null
+			? WatchSingleFileAsync(_singleFilePath, ct)
+			: WatchFilesAsync(ct);
 
 		// Keepalive
 		var pingTask = PingLoopAsync(ct);
@@ -168,13 +201,36 @@ public static class GoDevServer
 			});
 			await ws.SendAsync(welcome, WebSocketMessageType.Binary, true, ct);
 
-			// Send initial assembly
+			// Send initial assembly — recompile from current source for reconnecting
+			// clients so they get latest code, not stale startup assembly.
+			byte[] peToSend, pdbToSend;
+			if (_sequence > 0)
+			{
+				var freshCompiler = _singleFilePath is not null
+					? DeltaCompiler.ForSingleFile(_singleFilePath)
+					: new DeltaCompiler(_projectDir!, _compiler.AssemblyName);
+				var freshResult = freshCompiler.CompileInitial();
+				if (freshResult.Success && freshResult.Pe is not null)
+				{
+					peToSend = freshResult.Pe;
+					pdbToSend = freshResult.Pdb!;
+					Console.WriteLine($"  Recompiled fresh assembly for reconnect ({peToSend.Length} bytes)");
+				}
+				else
+				{
+					peToSend = _compiler.CurrentPe!;
+					pdbToSend = _compiler.CurrentPdb!;
+				}
+			}
+			else
+			{
+				peToSend = _compiler.CurrentPe!;
+				pdbToSend = _compiler.CurrentPdb!;
+			}
 			var initFrame = GoProtocol.EncodeInitialAssembly(
-				_compiler.AssemblyName,
-				_compiler.CurrentPe!,
-				_compiler.CurrentPdb!);
+				_compiler.AssemblyName, peToSend, pdbToSend);
 			await ws.SendAsync(initFrame, WebSocketMessageType.Binary, true, ct);
-			Console.WriteLine($"  Sent initial assembly ({_compiler.CurrentPe!.Length} bytes)");
+			Console.WriteLine($"  Sent initial assembly ({peToSend.Length} bytes)");
 
 			// Keep reading (for pong responses, future commands)
 			while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -247,6 +303,51 @@ public static class GoDevServer
 		await Task.Delay(Timeout.Infinite, ct);
 	}
 
+	/// <summary>
+	/// Watches a single .cs file for changes. Handles Changed and Renamed events
+	/// since many editors save via temp-file + rename.
+	/// </summary>
+	static async Task WatchSingleFileAsync(string filePath, CancellationToken ct)
+	{
+		var dir = Path.GetDirectoryName(filePath)!;
+		var fileName = Path.GetFileName(filePath);
+
+		using var watcher = new FileSystemWatcher(dir)
+		{
+			Filter = fileName,
+			IncludeSubdirectories = false,
+			NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+			EnableRaisingEvents = true,
+		};
+
+		var debounceTimer = new System.Timers.Timer(300) { AutoReset = false };
+
+		debounceTimer.Elapsed += async (_, _) =>
+		{
+			await CompileAndPushDelta([filePath]);
+		};
+
+		void OnFileChanged(object sender, FileSystemEventArgs e)
+		{
+			debounceTimer.Stop();
+			debounceTimer.Start();
+		}
+
+		watcher.Changed += OnFileChanged;
+		watcher.Created += OnFileChanged;
+		watcher.Renamed += (_, e) =>
+		{
+			// Editors save via temp+rename — if the target is our file, trigger
+			if (string.Equals(e.Name, fileName, StringComparison.OrdinalIgnoreCase))
+			{
+				debounceTimer.Stop();
+				debounceTimer.Start();
+			}
+		};
+
+		await Task.Delay(Timeout.Infinite, ct);
+	}
+
 	static async Task CompileAndPushDelta(string[] changedFiles)
 	{
 		var relativePaths = changedFiles
@@ -264,11 +365,13 @@ public static class GoDevServer
 			// Send compilation errors to clients
 			var errorMsg = GoProtocol.EncodeJson(GoMessageType.CompilationError, new CompilationErrorMessage
 			{
-				Errors = result.Errors.Select(e => new CompilationDiagnostic
-				{
-					Message = e,
-					Severity = "Error",
-				}).ToList()
+				Errors = result.Diagnostics.Count > 0
+					? result.Diagnostics
+					: result.Errors.Select(e => new CompilationDiagnostic
+					{
+						Message = e,
+						Severity = "Error",
+					}).ToList()
 			});
 
 			await BroadcastAsync(errorMsg);
@@ -314,12 +417,25 @@ public static class GoDevServer
 		lock (_clientsLock)
 			clients = [.. _clients];
 
-		var tasks = clients
-			.Where(ws => ws.State == WebSocketState.Open)
-			.Select(ws => ws.SendAsync(frame, WebSocketMessageType.Binary, true, CancellationToken.None));
+		var deadClients = new List<WebSocket>();
 
-		try { await Task.WhenAll(tasks); }
-		catch (WebSocketException) { }
+		foreach (var ws in clients)
+		{
+			if (ws.State != WebSocketState.Open)
+			{
+				deadClients.Add(ws);
+				continue;
+			}
+			try { await ws.SendAsync(frame, WebSocketMessageType.Binary, true, CancellationToken.None); }
+			catch (WebSocketException) { deadClients.Add(ws); }
+		}
+
+		if (deadClients.Count > 0)
+		{
+			lock (_clientsLock)
+				foreach (var ws in deadClients)
+					_clients.Remove(ws);
+		}
 	}
 
 	static async Task PingLoopAsync(CancellationToken ct)

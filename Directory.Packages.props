@@ -21,6 +21,11 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="$(MicrosoftExtensionsLoggingDebugVersion)" />
   </ItemGroup>
 
+  <!-- DevFlow Agent (for companion app inspection) -->
+  <ItemGroup Label="DevFlowAgent">
+    <PackageVersion Include="Microsoft.Maui.DevFlow.Agent" Version="0.24.0-dev" />
+  </ItemGroup>
+
   <!-- DevFlow dependencies (pinned, third party) -->
   <ItemGroup Label="DevFlow">
     <PackageVersion Include="Fizzler" Version="$(FizzlerVersion)" />
@@ -68,6 +73,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="$(MicrosoftCodeAnalysisCSharpVersion)" />
     <PackageVersion Include="QRCoder" Version="$(QRCoderVersion)" />
     <PackageVersion Include="Clancey.Comet" Version="$(ClanceyCometVersion)" />
+    <PackageVersion Include="Comet" Version="0.5.0-local" />
     <PackageVersion Include="ZXing.Net.Maui.Controls" Version="$(ZXingNetMauiVersion)" />
   </ItemGroup>
 

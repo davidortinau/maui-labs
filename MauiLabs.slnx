@@ -39,4 +39,7 @@
   </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/DevFlow/" />
+  <Folder Name="/tests/Go/">
+    <Project Path="test/e2e/CometGo.CompilerTests/CometGo.CompilerTests.csproj" />
+  </Folder>
 </Solution>
