@@ -5,6 +5,15 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
+  <!--
+    Import eng/Versions.props directly so $(...)Version properties resolve during NuGet
+    restore. Directory.Build.props imports it via Arcade Sdk.props, but that import isn't
+    visible to Directory.Packages.props (CPM is evaluated in a separate phase). Without
+    this import, $(MicrosoftCodeAnalysisCSharpVersion) etc. evaluate to empty strings
+    and PackageVersion entries below resolve to floor versions like 1.0.0.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)eng/Versions.props" />
+
   <!-- .NET MAUI (versions from eng/Versions.props, flowing via maestro) -->
   <ItemGroup Label="MAUI">
     <PackageVersion Include="Microsoft.Maui.Controls" Version="$(MicrosoftMauiControlsVersion)" />

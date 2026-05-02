@@ -432,3 +432,9 @@ sim_tap.py
 # Personal / per-machine agent state
 .claude/settings.local.json
 .claude/skills/**/.skill-version
+
+# Comet Go local scratch / logs (per-machine)
+test-go-app/
+test/
+src/Comet/.squad/e2elogs/
+docs/plan-a-e2e-testing-server-hardening.md
