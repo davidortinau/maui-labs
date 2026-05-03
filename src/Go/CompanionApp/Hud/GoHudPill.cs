@@ -19,8 +19,8 @@ internal sealed class GoHudPill : IWindowOverlayElement
 	const float DotRadius = 5f;
 	const float HorizontalPadding = 12f;
 	const float DotTextGap = 8f;
-	const float MinPillWidth = 84f;
-	const float MaxPillWidth = 240f;
+	const float MinPillWidth = 96f;
+	const float MaxPillWidth = 260f;
 	const float TextSize = 13f;
 
 	// Default safe-area fallbacks; replaced on iOS/MacCatalyst by SafeAreaInsets read at draw-time.
@@ -63,9 +63,12 @@ internal sealed class GoHudPill : IWindowOverlayElement
 			// Measure text to size the pill
 			canvas.FontSize = TextSize;
 			var measured = canvas.GetStringSize(text, Microsoft.Maui.Graphics.Font.Default, TextSize);
+			// Pad measured width so glyph metrics differences (and Mac Catalyst's
+			// stricter measurement) don't cause text to wrap inside the pill.
+			float measuredText = measured.Width + 4f;
 			float pillWidth = Math.Min(MaxPillWidth,
 				Math.Max(MinPillWidth,
-					HorizontalPadding + DotRadius * 2 + DotTextGap + measured.Width + HorizontalPadding));
+					HorizontalPadding + DotRadius * 2 + DotTextGap + measuredText + HorizontalPadding));
 
 			float pillX = safeLeading;
 			float pillY = safeTop;
