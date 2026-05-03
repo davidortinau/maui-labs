@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Comet;
 using Comet.Styles;
+using Microsoft.Maui.Go.CompanionApp.Hud;
 using Microsoft.Maui.Hosting;
 using ZXing.Net.Maui.Controls;
 
@@ -19,6 +20,12 @@ public class GoApp : CometApp
 	public GoApp()
 	{
 		Body = () => new GoMainPage();
+
+#if DEBUG
+		// Kick off the HUD overlay attach loop. Will poll for the window
+		// (set inside IApplication.CreateWindow) and attach when ready.
+		GoHudInitializer.Start();
+#endif
 	}
 
 	public static MauiApp CreateMauiApp()

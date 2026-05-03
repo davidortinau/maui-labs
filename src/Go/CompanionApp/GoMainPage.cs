@@ -10,6 +10,7 @@ using Comet;
 using Comet.Reactive;
 using Comet.Styles;
 using Microsoft.Maui;
+using Microsoft.Maui.Go.CompanionApp.Hud;
 using Microsoft.Maui.Graphics;
 using static Comet.CometControls;
 
@@ -37,12 +38,39 @@ GoClient? _client;
 bool _autoConnectAttempted;
 Type? _userViewType;
 View? _lastGoodView;
+string? _connectedUrl;
+
+static GoMainPage? s_current;
+
+/// <summary>
+/// Raised by the HUD overlay's "Exit to Connect Screen" action.
+/// Routed to the active <see cref="GoMainPage"/> instance.
+/// </summary>
+public static void RaiseExitRequested() => s_current?.ExitToConnectScreen();
 
 public GoMainPage()
 {
+s_current = this;
+
 var autoUrl = Environment.GetEnvironmentVariable("MAUI_GO_SERVER");
 if (!string.IsNullOrEmpty(autoUrl))
 State.ServerUrl = autoUrl;
+}
+
+/// <summary>
+/// Soft exit — keep <see cref="_client"/> alive (websocket open, assembly loaded)
+/// so the user can reconnect without re-downloading. Clears the UI state so the
+/// connect screen renders.
+/// </summary>
+public void ExitToConnectScreen()
+{
+SetState(s =>
+{
+s.IsConnected = false;
+s.UserView = null;
+s.ErrorMessage = null;
+s.Status = "Tap Connect to resume";
+});
 }
 
 /// <summary>
@@ -312,8 +340,44 @@ async void OnConnectTapped()
 			s.ErrorMessage = null;
 		});
 
-		_client?.Dispose();
+		// Soft-exit fast path: if we still have a live client + cached view type
+		// for the same URL, just re-render from cache without re-downloading.
+		if (_client is not null && _userViewType is not null &&
+			string.Equals(_connectedUrl, rawUrl, StringComparison.Ordinal))
+		{
+			var cached = TryCreateUserView(_userViewType, out var cachedError);
+			if (cached is not null)
+			{
+				_lastGoodView = cached;
+				SetState(s =>
+				{
+					s.UserView = cached;
+					s.IsConnected = true;
+					s.ErrorMessage = null;
+					s.Status = "Reconnected (cached)";
+				});
+			}
+			else
+			{
+				SetState(s =>
+				{
+					s.IsConnected = true;
+					s.ErrorMessage = cachedError;
+				});
+			}
+			return;
+		}
+
+		// Tear down any previous client (URL changed or never connected before).
+		if (_client is not null)
+		{
+			GoHud.Controller.Unbind();
+			_client.Dispose();
+		}
 		_client = new GoClient();
+		_connectedUrl = rawUrl;
+
+		GoHud.Controller.Bind(_client, rawUrl);
 
 		_client.StatusChanged += status =>
 			Microsoft.Maui.ApplicationModel.MainThread.BeginInvokeOnMainThread(() =>
@@ -388,9 +452,11 @@ async void OnConnectTapped()
 
 void OnDisconnectTapped()
 {
+GoHud.Controller.Unbind();
 _client?.Dispose();
 _client = null;
 _lastGoodView = null;
+_connectedUrl = null;
 SetState(s =>
 {
 s.IsConnected = false;
