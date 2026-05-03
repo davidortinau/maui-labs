@@ -24,6 +24,7 @@ internal sealed class GoHudPill : IWindowOverlayElement
 	// Real cap comes from clamping to the visible surface in Draw().
 	const float MaxPillWidth = 320f;
 	const float EdgeMargin = 12f;
+	const float PhysicalBottomMargin = 6f;
 	const float TextSize = 13f;
 
 	// Default safe-area fallbacks; replaced on iOS/MacCatalyst by SafeAreaInsets read at draw-time.
@@ -70,9 +71,11 @@ internal sealed class GoHudPill : IWindowOverlayElement
 			// Measure text to size the pill
 			canvas.FontSize = TextSize;
 			var measured = canvas.GetStringSize(text, Microsoft.Maui.Graphics.Font.Default, TextSize);
-			// Pad measured width so glyph metrics differences (and Mac Catalyst's
-			// stricter measurement) don't cause text to wrap inside the pill.
-			float measuredText = measured.Width + 4f;
+			// GetStringSize on iOS systematically under-reports for short strings
+			// containing emoji ('⚠', '↻', '⟳') and other non-Latin glyphs — the
+			// rendered width is consistently ~15-25pt larger than the measurement.
+			// Pad generously so DrawString into the pill rect never word-wraps.
+			float measuredText = measured.Width + 24f;
 			float desiredWidth = HorizontalPadding + DotRadius * 2 + DotTextGap + measuredText + HorizontalPadding;
 
 			// Clamp to available screen width (covers narrow split-screen, Mac Catalyst resize).
@@ -89,8 +92,13 @@ internal sealed class GoHudPill : IWindowOverlayElement
 			float pillX = isTrailing
 				? dirtyRect.Width - safe.trailing - EdgeMargin - pillWidth
 				: safe.leading + EdgeMargin;
+			// Bottom corners deliberately ignore the bottom safe-area inset and
+			// sit close to the physical edge of the screen — the home indicator
+			// is centered (we anchor leading/trailing) so it doesn't conflict,
+			// and the pill is small enough that overlapping the unsafe zone
+			// reads as a status badge rather than app chrome.
 			float pillY = isBottom
-				? dirtyRect.Height - safe.bottom - EdgeMargin - PillHeight
+				? dirtyRect.Height - PillHeight - PhysicalBottomMargin
 				: safe.top + EdgeMargin;
 
 			_pillRect = new RectF(pillX, pillY, pillWidth, PillHeight);
