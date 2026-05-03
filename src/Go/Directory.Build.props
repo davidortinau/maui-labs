@@ -23,8 +23,17 @@
     from Directory.Build.props, so it still applies to Go projects.
   -->
 
-  <PropertyGroup>
-    <MauiVersion Condition="'$(MauiVersion)' == ''">$(MicrosoftMauiControlsVersion)</MauiVersion>
+  <!--
+    Go manages its own MAUI / Extensions versions independently of
+    eng/Versions.props because Go targets net11.0 and needs the matching
+    11.0.0-preview.* asset graph. The repo-root pin (10.0.41) has no
+    net11.0 asset and would silently fall back to ancient 8.0.x packages
+    at restore time, which then fail to load at runtime.
+  -->
+  <PropertyGroup Label="Go MAUI / Extensions versions">
+    <GoMauiVersion>11.0.0-preview.3.26207.5</GoMauiVersion>
+    <GoExtensionsVersion>11.0.0-preview.3.26203.107</GoExtensionsVersion>
+    <MauiVersion Condition="'$(MauiVersion)' == ''">$(GoMauiVersion)</MauiVersion>
   </PropertyGroup>
 
   <PropertyGroup>

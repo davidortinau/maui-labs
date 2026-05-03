@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      Go manages its own package versions independently of the repo-root
+      Directory.Packages.props. The repo root pins MAUI to 10.0.41 (a stable
+      .NET 10 release) for shipping DevFlow packages, but Go targets net11.0
+      and consumes 11.0.0-preview.* packages. Mixing those two would resolve
+      Microsoft.Maui.Core to 8.0.3 (legacy fallback) and break runtime.
+    -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
