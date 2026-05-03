@@ -17,11 +17,41 @@ namespace Microsoft.Maui.Go.CompanionApp.Hud;
 /// </summary>
 public static class GoHud
 {
+	static GoHudCorner s_corner = GoHudCorner.BottomTrailing;
+
 	public static GoHudState State { get; } = new GoHudState();
 	public static GoHudController Controller { get; } = new GoHudController(State);
 	public static GoHudOverlay? Overlay { get; private set; }
 
+	/// <summary>
+	/// Screen corner where the status pill is anchored. Default is
+	/// <see cref="GoHudCorner.BottomTrailing"/>. Setting this property
+	/// invalidates the overlay so the pill repositions on next draw.
+	/// </summary>
+	public static GoHudCorner Corner
+	{
+		get => s_corner;
+		set
+		{
+			if (s_corner == value) return;
+			s_corner = value;
+			MainThread.BeginInvokeOnMainThread(() => Overlay?.Invalidate());
+		}
+	}
+
 	internal static void SetOverlay(GoHudOverlay overlay) => Overlay = overlay;
+}
+
+/// <summary>
+/// Screen corner where the HUD pill is anchored. Layout uses physical
+/// leading/trailing (left/right) — there is no RTL flip.
+/// </summary>
+public enum GoHudCorner
+{
+	TopLeading,
+	TopTrailing,
+	BottomLeading,
+	BottomTrailing,
 }
 
 /// <summary>

@@ -39,7 +39,21 @@ public sealed class GoHudOverlay : WindowOverlay
 		_state.PropertyChanged += OnStateChanged;
 		Tapped += OnTapped;
 
-		SetPassthrough();
+		// Hit testing model:
+		//   * Passthrough is left ENABLED so taps outside any HUD element fall to the app.
+		//   * EnableDrawableTouchHandling makes the platform overlay consult our
+		//     IWindowOverlayElement.Contains() to decide whether to capture a tap.
+		//
+		// When collapsed: only GoHudPill.Contains returns true on its rect.
+		//   App taps elsewhere flow through to the user's UI.
+		// When expanded: GoHudPanel.Contains returns true for the entire scrim
+		//   (== dirtyRect), capturing every tap and routing via OnTapped.
+		//
+		// This avoids toggling DisableUITouchEventPassthrough on every expand/collapse,
+		// which on iOS leaves the gesture recognizer in a state where the pill
+		// stops responding to taps after the first round-trip.
+		DisableUITouchEventPassthrough = false;
+		EnableDrawableTouchHandling = true;
 	}
 
 	void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -61,23 +75,8 @@ public sealed class GoHudOverlay : WindowOverlay
 			}, null, TimeSpan.FromMilliseconds(2500), Timeout.InfiniteTimeSpan);
 		}
 
-		if (e.PropertyName == nameof(GoHudState.IsExpanded))
-		{
-			SetPassthrough();
-		}
-
 		// Always invalidate on any property change so the canvas redraws.
 		Invalidate();
-	}
-
-	void SetPassthrough()
-	{
-		// When the panel is expanded we want to capture taps (scrim + buttons).
-		// When only the pill is visible we still need to receive taps on the pill,
-		// but the WindowOverlay framework handles that via Tapped events with passthrough on.
-		// However, with passthrough enabled, the panel's scrim taps would also go to the app
-		// behind it — which we don't want. So toggle based on expanded state.
-		DisableUITouchEventPassthrough = _state.IsExpanded;
 	}
 
 	void OnTapped(object? sender, WindowOverlayTappedEventArgs e)

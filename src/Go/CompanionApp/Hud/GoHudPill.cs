@@ -20,12 +20,17 @@ internal sealed class GoHudPill : IWindowOverlayElement
 	const float HorizontalPadding = 12f;
 	const float DotTextGap = 8f;
 	const float MinPillWidth = 96f;
-	const float MaxPillWidth = 260f;
+	// Hard upper bound used only when the available screen width is unconstrained.
+	// Real cap comes from clamping to the visible surface in Draw().
+	const float MaxPillWidth = 320f;
+	const float EdgeMargin = 12f;
 	const float TextSize = 13f;
 
 	// Default safe-area fallbacks; replaced on iOS/MacCatalyst by SafeAreaInsets read at draw-time.
 	const float DefaultSafeTop = 50f;
+	const float DefaultSafeBottom = 34f;
 	const float DefaultSafeLeading = 16f;
+	const float DefaultSafeTrailing = 16f;
 
 	readonly GoHudState _state;
 
@@ -43,9 +48,11 @@ internal sealed class GoHudPill : IWindowOverlayElement
 	public RectF HitRect => _pillRect;
 
 	/// <summary>
-	/// Whether the pill is currently visible. Disconnected status hides the pill entirely.
+	/// Whether the pill is currently visible. Hidden when disconnected or when
+	/// the expanded panel is up (the modal owns the screen).
 	/// </summary>
-	public bool IsVisible => _state.Status != GoHudConnectionStatus.Disconnected;
+	public bool IsVisible
+		=> _state.Status != GoHudConnectionStatus.Disconnected && !_state.IsExpanded;
 
 	public bool Contains(Point point) => IsVisible && _pillRect.Contains(point);
 
@@ -53,7 +60,7 @@ internal sealed class GoHudPill : IWindowOverlayElement
 	{
 		if (!IsVisible) return;
 
-		var (safeTop, safeLeading) = GetSafeArea();
+		var safe = GetSafeInsets();
 
 		var (text, fillColor, strokeColor, dotColor, textColor) = StyleForStatus(_state);
 
@@ -66,12 +73,26 @@ internal sealed class GoHudPill : IWindowOverlayElement
 			// Pad measured width so glyph metrics differences (and Mac Catalyst's
 			// stricter measurement) don't cause text to wrap inside the pill.
 			float measuredText = measured.Width + 4f;
-			float pillWidth = Math.Min(MaxPillWidth,
-				Math.Max(MinPillWidth,
-					HorizontalPadding + DotRadius * 2 + DotTextGap + measuredText + HorizontalPadding));
+			float desiredWidth = HorizontalPadding + DotRadius * 2 + DotTextGap + measuredText + HorizontalPadding;
 
-			float pillX = safeLeading;
-			float pillY = safeTop;
+			// Clamp to available screen width (covers narrow split-screen, Mac Catalyst resize).
+			float availableWidth = Math.Max(
+				MinPillWidth,
+				dirtyRect.Width - safe.leading - safe.trailing - EdgeMargin * 2);
+			float pillWidth = Math.Min(MaxPillWidth, Math.Max(MinPillWidth, desiredWidth));
+			pillWidth = Math.Min(pillWidth, availableWidth);
+
+			var corner = GoHud.Corner;
+			bool isTrailing = corner is GoHudCorner.TopTrailing or GoHudCorner.BottomTrailing;
+			bool isBottom = corner is GoHudCorner.BottomLeading or GoHudCorner.BottomTrailing;
+
+			float pillX = isTrailing
+				? dirtyRect.Width - safe.trailing - EdgeMargin - pillWidth
+				: safe.leading + EdgeMargin;
+			float pillY = isBottom
+				? dirtyRect.Height - safe.bottom - EdgeMargin - PillHeight
+				: safe.top + EdgeMargin;
+
 			_pillRect = new RectF(pillX, pillY, pillWidth, PillHeight);
 
 			// Pill background
@@ -136,7 +157,7 @@ internal sealed class GoHudPill : IWindowOverlayElement
 				textColor: white),
 
 			GoHudConnectionStatus.Failed => (
-				text: "⚠ " + Truncate(s.LastError ?? "Reload failed", 28),
+				text: "⚠ Reload failed",
 				fill: Color.FromRgba(0xC9, 0x2A, 0x2A, 0xE6),
 				stroke: Color.FromRgb(0xFF, 0x4D, 0x4D),
 				dot: white,
@@ -164,7 +185,7 @@ internal sealed class GoHudPill : IWindowOverlayElement
 	static string Truncate(string s, int max)
 		=> s.Length <= max ? s : s[..(max - 1)] + "…";
 
-	(float top, float leading) GetSafeArea()
+	(float top, float bottom, float leading, float trailing) GetSafeInsets()
 	{
 #if IOS || MACCATALYST
 		try
@@ -180,9 +201,12 @@ internal sealed class GoHudPill : IWindowOverlayElement
 						{
 							if (w.IsKeyWindow)
 							{
-								var top = (float)w.SafeAreaInsets.Top;
-								var leading = (float)w.SafeAreaInsets.Left;
-								return (Math.Max(top, 8f), Math.Max(leading, 12f));
+								var insets = w.SafeAreaInsets;
+								return (
+									Math.Max((float)insets.Top, 8f),
+									Math.Max((float)insets.Bottom, 8f),
+									Math.Max((float)insets.Left, 12f),
+									Math.Max((float)insets.Right, 12f));
 							}
 						}
 					}
@@ -191,6 +215,6 @@ internal sealed class GoHudPill : IWindowOverlayElement
 		}
 		catch { }
 #endif
-		return (DefaultSafeTop, DefaultSafeLeading);
+		return (DefaultSafeTop, DefaultSafeBottom, DefaultSafeLeading, DefaultSafeTrailing);
 	}
 }
