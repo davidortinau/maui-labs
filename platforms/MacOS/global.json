@@ -1,0 +1,10 @@
+{
+  "sdk": {
+    "version": "11.0.100-preview.5.26302.115",
+    "rollForward": "latestFeature",
+    "allowPrerelease": true
+  },
+  "msbuild-sdks": {
+    "Microsoft.DotNet.Arcade.Sdk": "10.0.0-beta.26203.109"
+  }
+}

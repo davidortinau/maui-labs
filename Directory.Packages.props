@@ -1,5 +1,13 @@
 <Project>
 
+  <!-- Import Versions.props so $(MicrosoftMauiControlsVersion) etc. are defined
+       BEFORE CPM evaluates PackageVersion entries below. Without this, CPM sees
+       empty version strings and NuGet falls back to an arbitrary low version
+       (observed: Microsoft.Maui.Essentials 8.0.3) producing a runtime
+       TypeLoadException because MAUI 8 interfaces don't expose the methods
+       implemented by the maui-labs macOS Essentials classes. -->
+  <Import Project="eng/Versions.props" />
+
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>

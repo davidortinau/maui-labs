@@ -48,8 +48,8 @@ class TextToSpeechImplementation : ITextToSpeech
                     ss.Volume = Math.Clamp(options.Volume.Value, 0f, 1f);
                 if (options.Locale?.Id is not null)
                     ss.Voice = options.Locale.Id;
-                if (options.Rate.HasValue)
-                    ss.Rate = options.Rate.Value;
+                // NOTE: SpeechOptions.Rate was removed in MAUI 11. If a Rate
+                // surface is reintroduced, plumb it here.
             }
 
             del.FinishedSpeaking += OnFinished;

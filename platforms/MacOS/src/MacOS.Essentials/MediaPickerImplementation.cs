@@ -19,7 +19,8 @@ class MediaPickerImplementation : IMediaPicker
 
     public async Task<List<FileResult>> PickPhotosAsync(MediaPickerOptions? options = null)
     {
-        var results = await PickFilesWithTypes(GetImageTypes(), options?.SelectionLimit ?? 0);
+        // NOTE: MediaPickerOptions.SelectionLimit was removed in MAUI 11; pass 0 (no limit).
+        var results = await PickFilesWithTypes(GetImageTypes(), 0);
         return results;
     }
 
@@ -34,7 +35,8 @@ class MediaPickerImplementation : IMediaPicker
 
     public async Task<List<FileResult>> PickVideosAsync(MediaPickerOptions? options = null)
     {
-        var results = await PickFilesWithTypes(GetVideoTypes(), options?.SelectionLimit ?? 0);
+        // NOTE: MediaPickerOptions.SelectionLimit was removed in MAUI 11; pass 0 (no limit).
+        var results = await PickFilesWithTypes(GetVideoTypes(), 0);
         return results;
     }
 
