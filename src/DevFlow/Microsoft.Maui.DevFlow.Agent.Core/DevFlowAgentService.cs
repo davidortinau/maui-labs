@@ -1882,6 +1882,99 @@ public partial class DevFlowAgentService : IDisposable, IMarkerPublisher
     }
 
     /// <summary>
+    /// Fires a real long press on an element's LongPressGestureRecognizer (MAUI net11+).
+    /// Resolved entirely via reflection by type name so the agent still builds against the
+    /// minimum supported MAUI (which predates LongPressGestureRecognizer).
+    /// </summary>
+    private async Task<HttpResponse> HandleLongPress(HttpRequest request)
+    {
+        if (_app == null) return HttpResponse.Error("Agent not bound to app");
+
+        var body = request.BodyAs<ActionRequest>();
+        if (body?.ElementId == null)
+            return HttpResponse.Error("elementId is required");
+
+        var startedAtUtc = DateTime.UtcNow;
+        var result = await DispatchAsync(() =>
+        {
+            var el = _treeWalker.GetElementById(body.ElementId, _app);
+            if (el == null) return "Element not found";
+
+            if (el is View v)
+            {
+                object? lp = null;
+                foreach (var g in v.GestureRecognizers)
+                {
+                    if (g?.GetType().FullName == "Microsoft.Maui.Controls.LongPressGestureRecognizer")
+                    {
+                        lp = g;
+                        break;
+                    }
+                }
+
+                if (lp == null)
+                    return $"No LongPressGestureRecognizer on {el.GetType().FullName} (gestures:{v.GestureRecognizers.Count})";
+
+                // Command first, then the LongPressed event via reflection (SendLongPressed is internal).
+                var cmdProp = lp.GetType().GetProperty("Command");
+                if (cmdProp?.GetValue(lp) is System.Windows.Input.ICommand cmd)
+                {
+                    var paramProp = lp.GetType().GetProperty("CommandParameter");
+                    cmd.Execute(paramProp?.GetValue(lp));
+                    return "ok";
+                }
+
+                if (TryInvokeLongPressed(lp, v))
+                    return "ok";
+
+                return $"LongPressGestureRecognizer found but SendLongPressed reflection failed on {el.GetType().FullName}";
+            }
+
+            return $"Element {el.GetType().FullName} is not a View; long press unsupported";
+        });
+
+        PublishUiOperationSpan(
+            "action.longpress",
+            startedAtUtc,
+            result == "ok",
+            result == "ok" ? null : result,
+            body.ElementId);
+
+        return result == "ok" ? HttpResponse.Ok("LongPressed") : HttpResponse.Error(result);
+    }
+
+    /// <summary>
+    /// Invokes the LongPressed event on a LongPressGestureRecognizer via reflection.
+    /// Calls internal SendLongPressed(View sender, Func&lt;IElement?, Point?&gt;? getPosition) method.
+    /// The recognizer is passed as object because the type does not exist on the minimum MAUI build.
+    /// </summary>
+    private static bool TryInvokeLongPressed(object longPressGesture, View sender)
+    {
+        try
+        {
+            var sendLongPressed = longPressGesture.GetType().GetMethod("SendLongPressed",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            if (sendLongPressed != null)
+            {
+                var paramCount = sendLongPressed.GetParameters().Length;
+                var args = paramCount switch
+                {
+                    0 => Array.Empty<object>(),
+                    1 => new object[] { sender },
+                    _ => new object?[] { sender, null }
+                };
+                sendLongPressed.Invoke(longPressGesture, args);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Microsoft.Maui.DevFlow] TryInvokeLongPressed failed: {ex.GetBaseException().Message}");
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Invokes the Tapped event on a TapGestureRecognizer via reflection.
     /// Calls internal SendTapped(View sender, Func&lt;IElement?, Point?&gt;? getPosition) method.
     /// </summary>
@@ -2566,7 +2659,7 @@ public partial class DevFlowAgentService : IDisposable, IMarkerPublisher
                 Method = "POST",
                 Body = JsonSerializer.Serialize(new ActionRequest { ElementId = body.ElementId })
             }),
-            "longpress" or "long-press" => await HandleTap(new HttpRequest
+            "longpress" or "long-press" => await HandleLongPress(new HttpRequest
             {
                 Method = "POST",
                 Body = JsonSerializer.Serialize(new ActionRequest { ElementId = body.ElementId })
