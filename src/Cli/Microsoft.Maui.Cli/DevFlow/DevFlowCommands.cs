@@ -439,6 +439,32 @@ public class DevFlowCommands
         });
         mauiCommand.Add(mauiTapCmd);
 
+        // MAUI long-press
+        var longPressIdArg = new Argument<string?>("elementId") { Description = "Element ID to long-press (optional if --automationId, --type, or --text is used)", DefaultValueFactory = _ => null };
+        var longPressDurationOption = new Option<int?>("--duration") { Description = "Press duration in milliseconds (optional)" };
+        var mauiLongPressCmd = new Command("longpress", "Long-press element (fires LongPressGestureRecognizer)") { longPressIdArg, longPressDurationOption, resolveAutoIdOption, resolveTypeOption, resolveTextOption, resolveIndexOption, andScreenshotOption, andTreeOption, andTreeDepthOption };
+        mauiLongPressCmd.SetAction(async (ctx, ct) =>
+        {
+            var host = ctx.GetValue(agentHostOption)!;
+            var port = ctx.GetValue(agentPortOption);
+            var isJson = output.ResolveJsonMode(ctx.GetValue(jsonOption), ctx.GetValue(noJsonOption));
+            var id = ctx.GetValue(longPressIdArg);
+            var autoId = ctx.GetValue(resolveAutoIdOption);
+            var type = ctx.GetValue(resolveTypeOption);
+            var text = ctx.GetValue(resolveTextOption);
+            var index = ctx.GetValue(resolveIndexOption);
+            var durationMs = ctx.GetValue(longPressDurationOption);
+            var andScreenshot = ctx.GetValue(andScreenshotOption);
+            var hasAndScreenshot = ctx.GetResult(andScreenshotOption) != null;
+            var andTree = ctx.GetValue(andTreeOption);
+            var andTreeDepth = ctx.GetValue(andTreeDepthOption);
+            var resolvedId = await ResolveElementIdAsync(host, port, isJson, id, autoId, type, text, index);
+            if (resolvedId == null) return;
+            await MauiLongPressAsync(host, port, isJson, resolvedId, durationMs);
+            await HandlePostActionFlags(host, port, isJson, hasAndScreenshot, andScreenshot, andTree, andTreeDepth);
+        });
+        mauiCommand.Add(mauiLongPressCmd);
+
         // MAUI fill
         var fillIdArg = new Argument<string?>("elementId") { Description = "Element ID (optional if --automationId, --type, or --text is used)", DefaultValueFactory = _ => null };
         var fillTextArg2 = new Argument<string>("text") { Description = "Text to fill" };
@@ -2849,6 +2875,19 @@ public class DevFlowCommands
             var success = await client.TapAsync(elementId);
             Output.WriteActionResult(success, "Tapped", elementId, json,
                 success ? $"Tapped: {elementId}" : $"Failed to tap: {elementId}");
+            if (!success) _errorOccurred = true;
+        }
+        catch (Exception ex) { Output.WriteError(ex.Message, json, suggestions: new[] { "Run 'ui tree' to refresh element IDs" }); _errorOccurred = true; }
+    }
+
+    private static async Task MauiLongPressAsync(string host, int port, bool json, string elementId, int? durationMs)
+    {
+        try
+        {
+            using var client = await CreateAgentClientAsync(host, port);
+            var success = await client.GestureAsync("longpress", elementId, durationMs: durationMs);
+            Output.WriteActionResult(success, "LongPressed", elementId, json,
+                success ? $"Long-pressed: {elementId}" : $"Failed to long-press: {elementId}");
             if (!success) _errorOccurred = true;
         }
         catch (Exception ex) { Output.WriteError(ex.Message, json, suggestions: new[] { "Run 'ui tree' to refresh element IDs" }); _errorOccurred = true; }

@@ -64,6 +64,29 @@
                 </Grid>
             </Border>
 
+            <!-- Long-press test surface. LongPressGestureRecognizer requires a newer MAUI
+                 than this sample's floor (runtime XamlParseException on 10.0.x), so the grid
+                 carries only a tap recognizer. 'ui longpress' on it must report
+                 "No LongPressGestureRecognizer" WITHOUT firing the tap (the old fallback bug);
+                 code-behind attaches the real recognizer via reflection when MAUI has it. -->
+            <Border StrokeShape="RoundRectangle 8" Padding="16" AutomationId="LongPressBorder">
+                <Border.BackgroundColor>
+                    <AppThemeBinding Light="#FFD8E4" Dark="#633B48" />
+                </Border.BackgroundColor>
+                <Grid AutomationId="LongPressGrid" x:Name="LongPressGrid">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnLongPressGridTapped" />
+                    </Grid.GestureRecognizers>
+                    <Label Text="Long-press me (tap says tap)"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           FontSize="16">
+                        <Label.TextColor>
+                            <AppThemeBinding Light="#1C1B1F" Dark="#E6E1E5" />
+                        </Label.TextColor>
+                    </Label>
+                </Grid>
+            </Border>
+
             <!-- ImageButton -->
             <ImageButton Source="dotnet_bot.png"
                          HeightRequest="60" WidthRequest="60"

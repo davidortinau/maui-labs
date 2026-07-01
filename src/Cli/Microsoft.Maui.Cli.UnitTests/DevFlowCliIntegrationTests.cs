@@ -88,6 +88,22 @@ public class DevFlowCliIntegrationTests
     }
 
     [Fact]
+    public async Task UiLongPress_UsesV1GestureRoute()
+    {
+        var (server, cli) = await CreateFixturesAsync();
+        await using var serverHandle = server;
+
+        var result = await cli.InvokeAsync("devflow", "ui", "longpress", "el-1", "--json");
+
+        Assert.Equal(0, result.ExitCode);
+
+        var request = Assert.Single(server.RecordedRequests, r => r.Path == "/api/v1/ui/actions/gesture");
+        Assert.Equal("POST", request.Method);
+        Assert.Contains("longpress", request.Body);
+        Assert.Contains("el-1", request.Body);
+    }
+
+    [Fact]
     public async Task DiagnoseJson_WhenBrokerIsNotRunning_ReportsJsonArraysWithoutStartingBroker()
     {
         var cli = new CliTestHarness(mockAgentPort: 9223);
